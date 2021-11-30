@@ -1,0 +1,155 @@
+---
+title: 'Bios 6301: Assignment 9'
+author: 'Megan Taylor'
+output: pdf_document
+---
+
+*Due Tuesday, 30 November, 1:00 PM*
+
+$5^{n=day}$ points taken off for each day late.
+
+40 points total.
+
+Submit a single knitr file (named `homework9.rmd`), along with a valid PDF output file. Inside the file, clearly indicate which parts of your responses go with which problems (you may use the original homework document as a template). Add your name as `author` to the file's metadata section. Raw R code/output or word processor files are not acceptable.
+
+Failure to name file `homework9.rmd` or include author name may result in 5 points taken off.
+
+### Question 1 ###
+
+**15 points**
+
+Consider the following very simple genetic model (*very* simple -- don't worry if you're not a geneticist!). A population consists of equal numbers of two sexes: male and female. At each generation men and women are paired at random, and each pair produces exactly two offspring, one male and one female. We are interested in the distribution of height from one generation to the next. Suppose that the height of both children is just the average of the height of their parents, how will the distribution of height change across generations?
+
+
+It will tend more towards the orginal average height.
+
+
+Represent the heights of the current generation as a dataframe with two variables, m and f, for the two sexes. We can use `rnorm` to randomly generate the population at generation 1:
+
+```{r}
+set.seed(123)
+pop <- data.frame(m = rnorm(100, 160, 20), f = rnorm(100, 160, 20))
+```
+
+The following function takes the data frame `pop` and randomly permutes the ordering of the men. Men and women are then paired according to rows, and heights for the next generation are calculated by taking the mean of each row. The function returns a data frame with the same structure, giving the heights of the next generation.
+
+```{r}
+next_gen <- function(pop) {
+    pop$m <- sample(pop$m)
+    pop$m <- rowMeans(pop)
+    pop$f <- pop$m
+    pop
+}
+```
+
+Use the function `next_gen` to generate nine generations (you already have the first), then use the function `hist` to plot the distribution of male heights in each generation (this will require multiple calls to `hist`). The phenomenon you see is called regression to the mean.  Provide (at least) minimal decorations such as title and x-axis labels.
+
+```{r}
+gen1 = pop
+for (i in 2:9){
+  assign(paste("gen", i, sep=''), next_gen(get(paste("gen", i-1, sep=''))))
+}
+
+par(mfrow = c(3, 3))
+for (i in 1:9){
+  hist(get(paste("gen", i, sep=''))[,"m"], main = paste("Generation", i), xlab = "Height in cm", col = 'skyblue')
+}
+
+```
+
+### Question 2 ###
+
+**10 points**
+
+Use the simulated results from question 1 to reproduce (as closely as possible) the following plot in ggplot2.
+
+
+```{r}
+library(ggplot2)
+
+all <- rbind(gen1, gen2, gen3, gen4, gen5, gen6, gen7, gen8, gen9)
+all[,"gen"] = NA
+n = 1
+for (i in 1:9){
+  all[seq(n,n+99),"gen"] = i
+  n = n + 100
+}
+
+p <- ggplot(data=all) + geom_point(mapping = aes(x=m, y=f), alpha = 0.3)
+p + facet_wrap(~gen)
+```
+
+### Question 3 ###
+
+**15 points**
+
+You calculated the power of a study design in question #1 of assignment 3. The study has two variables, treatment group and outcome. There are two treatment groups (0, 1) and they should be assigned randomly with equal probability. The outcome should be a random normal variable with a mean of 60 and standard deviation of 20. If a patient is in the treatment group, add 5 to the outcome.
+
+Starting with a sample size of 250, create a 95% bootstrap percentile interval for the mean of each group. Then create a new bootstrap interval by increasing the sample size by 250 until the sample is 2500. Thus you will create a total of 10 bootstrap intervals.  Each bootstrap should create 1000 bootstrap samples. (9 points)
+
+```{r}
+n = 250
+meanbm_t = c()
+meanbm_c = c()
+ci_t = matrix(nrow = 10, ncol =2)
+ci_c = matrix(nrow = 10, ncol =2)
+ind = 1
+for (n in seq(250, 2500, length.out = 10)){
+  dat = data.frame(treatment = rbinom(n, 1, 0.5), outcome = rnorm(n, mean = 60, sd = 20))
+  for (i in 1:nrow(dat)){
+    if (dat[i,"treatment"] == 1)
+      dat[i, "outcome"] = dat[i, "outcome"] + 5
+  }
+  bm_c = numeric(1000)
+  bm_t = numeric(1000)
+  l_c = numeric(1000)
+  u_c = numeric(1000)
+  l_t = numeric(1000)
+  u_t = numeric(1000)
+  for (i in 1:1000){
+    sc <- sample(dat[which(dat[,"treatment"]==0),"outcome"], n/2, replace=TRUE)
+    st <- sample(dat[which(dat[,"treatment"]==1),"outcome"], n/2, replace=TRUE)
+    bm_c[i] <- mean(sc)
+    bm_t[i] <- mean(st)
+    l_c[i] <- mean(sc) + qnorm(0.025) * sd(sc) / sqrt(length(sc))
+    u_c[i] <- mean(sc) + qnorm(0.975) * sd(sc) / sqrt(length(sc))
+    l_t[i] <- mean(st) + qnorm(0.025) * sd(st) / sqrt(length(st))
+    u_t[i] <- mean(st) + qnorm(0.975) * sd(st) / sqrt(length(st))
+  }
+  meanbm_t[ind] = mean(bm_t)
+  meanbm_c[ind] = mean(bm_c)
+  ci_t[ind,1] <- mean(l_t)
+  ci_t[ind,2] <- mean(u_t)
+  ci_c[ind,1] <- mean(l_c)
+  ci_c[ind,2] <- mean(u_c)
+  ind = ind + 1
+}
+```
+
+
+Produce a line chart that includes the bootstrapped mean and lower and upper percentile intervals for each group.  Add appropriate labels and a legend. (6 points)
+
+You may use base graphics or ggplot2.
+Here's an example of how you could create transparent shaded areas.
+
+```{r}
+makeTransparent = function(..., alpha=0.5) {
+  if(alpha<0 | alpha>1) stop("alpha must be between 0 and 1")
+  alpha = floor(255*alpha)  
+  newColor = col2rgb(col=unlist(list(...)), alpha=FALSE)
+  .makeTransparent = function(col, alpha) {
+    rgb(red=col[1], green=col[2], blue=col[3], alpha=alpha, maxColorValue=255)
+  }
+  newColor = apply(newColor, 2, .makeTransparent, alpha=alpha)
+  return(newColor)
+}
+```
+
+```{r}
+x = seq(1, 10, by=1)
+plot(meanbm_c, type = "l", col = 'blue', ylim = c(50,75), main = "Bootstrapped Average Outcome with Confidence Intervals", xlab = "Bootstrap index", ylab = "Mean Outcome")
+polygon(x = c(x, rev(x)), y = c(ci_c[,1], rev(ci_c[,2])), col = makeTransparent('blue',alpha=0.5), border = makeTransparent('blue',alpha=0.5))
+polygon(x = c(x, rev(x)), y = c(ci_t[,1], rev(ci_t[,2])), col=makeTransparent('red',alpha=0.5), border = makeTransparent('red',alpha=0.5))
+lines(meanbm_t, col = 'red')
+legend("topright", legend = c("Treatment Group", "Control Group"), lty = c(1,1), col = c("red", "blue"))
+```
